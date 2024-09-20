@@ -1,7 +1,7 @@
 main_file: "examples/classifier_cifar10/main_lsq.py"
 arch: "resnet20"
 model_source: Local
-log_name: "islped_3w3a_1W1A_1bADC_32xbar"
+log_name: "logs"
 debug: false
 data: "./CIFAR-10"
 lr: 0.001
