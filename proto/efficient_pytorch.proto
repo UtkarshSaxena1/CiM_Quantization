@@ -66,8 +66,9 @@ message HyperParam {
     optional int32 wbitslice = 53 [default=1];
     optional int32 abitslice = 54 [default=1];
     optional int32 xbar = 55 [default=64];
-    optional int32 adcbits = 56 [default=6];
+    optional float adcbits = 56 [default=6];
     optional bool signed_xbar = 58 ;
+    optional bool stochastic_quant = 59 ;
     
     optional CimMode cimmode = 57;
 

@@ -80,11 +80,19 @@ class ReplaceModuleTool(object):
                     
                 else:
                     raise ValueError
-                
+                if self.is_first:
+                    nbits_a = self.kwargs['nbits_a']
+                    nbits_w = self.kwargs['nbits_w']
+                    self.kwargs['nbits_w'] =8
+                    self.kwargs['nbits_a'] =8
+
                 my_conv = Conv(m.in_channels, m.out_channels, m.kernel_size, m.stride,
                                m.padding, m.dilation, groups=m.groups, bias=has_bias,
                                **self.kwargs)
-                
+                if self.is_first:
+                    self.kwargs['nbits_w'] = nbits_w
+                    self.kwargs['nbits_a'] = nbits_a
+                    self.is_first=False
                 self.convs.append(my_conv)
                 conv_st_dict = m.state_dict()
                 W = conv_st_dict['weight']

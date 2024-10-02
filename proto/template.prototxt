@@ -30,8 +30,9 @@ nbits_a: 4
 wbitslice: 1
 abitslice: 1
 xbar: 64
-adcbits: 6
+adcbits: 6.0
 signed_xbar: false
+stochastic_quant: false
 warmup {
   epochs: 10
   multiplier: 10.0

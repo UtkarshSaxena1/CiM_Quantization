@@ -125,3 +125,5 @@ logger/
 results.json
 .DS_Store
 *.npy
+
+CIFAR-10/

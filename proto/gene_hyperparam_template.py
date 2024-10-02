@@ -54,6 +54,7 @@ def gene_base_template():
     hyper.xbar = hyper.xbar
     hyper.adcbits = hyper.adcbits
     hyper.signed_xbar=hyper.signed_xbar
+    hyper.stochastic_quant=hyper.stochastic_quant
 
     hyper.warmup.epochs = hyper.warmup.epochs
     hyper.warmup.multiplier = hyper.warmup.multiplier

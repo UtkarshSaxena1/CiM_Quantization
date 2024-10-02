@@ -50,31 +50,11 @@ def main_worker(gpu, ngpus_per_node, args):
     print('model:\n=========\n')
     display_model(model)
 
-    process_model(model, args, replace_first_layer=False, replace_map={
+    process_model(model, args, replace_first_layer=True, replace_map={
         'Conv2d': [my_nn.Conv2dLSQCiM],
         
-    }, nbits_w=args.hp.nbits_w, nbits_a=args.hp.nbits_a,nbits_alpha=args.hp.nbits_alpha, wbitslice=args.hp.wbitslice, abitslice=args.hp.abitslice, xbar=args.hp.xbar, adcbits=args.hp.adcbits, signed_xbar=args.hp.signed_xbar)
+    }, nbits_w=args.hp.nbits_w, nbits_a=args.hp.nbits_a,nbits_alpha=args.hp.nbits_alpha, wbitslice=args.hp.wbitslice, abitslice=args.hp.abitslice, xbar=args.hp.xbar, adcbits=args.hp.adcbits, signed_xbar=args.hp.signed_xbar,stochastic_quant=args.hp.stochastic_quant)
     
-    # state = torch.load('/home/nano01/a/saxenau/ADCLess/EfficientPyTorch-CIFAR10/logger/resnet20_inference_training_3w3a_1W1A_8ADC_89p6/best.pth.tar',map_location = torch.device('cuda:0'))
-    
-    #state = torch.load('/home/nano01/a/saxenau/ADCLess/EfficientPyTorch-CIFAR10/logger/FINAL/resnet20_3w3a_fpadc_89p96/best.pth.tar',map_location = torch.device('cuda:0'))
-    
-    #state = torch.load('/home/nano01/a/saxenau/ADCLess/EfficientPyTorch-CIFAR10/logger/resnet20_3w3a_ternaryADC_2022-05-11-23:32/resnet20_Conv2dLSQCiMcheckpoint.pth.tar',map_location = torch.device('cuda:0'))
-    
-    
-    # new_state = copy.deepcopy(state)
-    # for key in new_state['state_dict'].keys():
-    #     temp = state['state_dict'].pop(key)
-        
-    #     if 'alpha_cim' in key:
-    #         #print(temp)
-    #         #temp = temp.unsqueeze(1).repeat(1,2,1,1,1,1,1)
-    #         continue
-        
-    #     state['state_dict'][key] = temp
-    
-    # model.load_state_dict(state['state_dict'], strict = False)
-   
     # parallel and multi-gpu
     model = distributed_model(model, ngpus_per_node, args)
 
@@ -102,7 +82,6 @@ def main_worker(gpu, ngpus_per_node, args):
     os.system("cp -r ./proto "+log_dir)
     os.system("cp -r ./test "+log_dir)
     os.system("cp -r ./examples "+log_dir)
-    os.system("cp -r ./scripts "+log_dir)
     
     
     scheduler_lr = get_lr_scheduler(optimizer, args)

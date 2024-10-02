@@ -184,6 +184,7 @@ class _Conv2dQCiM(nn.Conv2d):
         self.wbitslice = kwargs_q['wbitslice']
         self.abitslice = kwargs_q['abitslice']
         self.xbar = kwargs_q['xbar']
+        self.stochastic_quant = kwargs_q['stochastic_quant']
         
         self.adcbits = kwargs_q['adcbits']
         
@@ -232,6 +233,7 @@ class _Conv2dQCiM(nn.Conv2d):
          
                    
         self.register_buffer('init_state', torch.zeros(1))
+        self.register_buffer('signed_act', torch.zeros(1))
         self.register_buffer('init_state_cim', torch.zeros(1))
 
     def add_param(self, param_k, param_v):

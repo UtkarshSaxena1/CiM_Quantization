@@ -546,13 +546,7 @@ def process_model(model, args, replace_map=None, replace_first_layer=False, **kw
         if os.path.isfile(args.hp.resume):
             print("=> loading checkpoint '{}'".format(args.hp.resume))
             checkpoint = torch.load(args.hp.resume, map_location='cpu')
-# =============================================================================
-#             for key in checkpoint['state_dict'].keys():
-#                 if 'init_state' in key :
-#                     checkpoint['state_dict'][key].fill_(0)
-#                     
-# =============================================================================
-            model.load_state_dict(checkpoint['state_dict'])
+            model.load_state_dict(checkpoint['state_dict'], strict=False)
             
         else:
             print("=> no checkpoint found at '{}'".format(args.hp.resume))

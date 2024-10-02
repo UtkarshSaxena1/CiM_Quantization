@@ -1,15 +1,15 @@
 main_file: "examples/classifier_cifar10/main_lsq.py"
 arch: "resnet20"
 model_source: Local
-log_name: "logs"
+log_name: "temp"
 debug: false
 data: "./CIFAR-10"
-lr: 0.001
-epochs: 300
-batch_size: 128
+lr: 0.01
+epochs: 100
+batch_size: 256
 workers: 8
 print_freq: 40
-evaluate: true
+evaluate: false
 pretrained: true
 seed: 0
 gpu_id: ANY
@@ -21,8 +21,10 @@ nbits_alpha: 8
 wbitslice: 1
 abitslice: 1
 xbar: 128
-adcbits: 8
+adcbits: 1.5
+stochastic_quant: False
 
+resume : '/home/min/a/saxenau/NANO/CiM_Quantization/logger/resnet20_ternaryadc_w3a3/resnet20_Conv2dLSQCiMbest.pth.tar'
 
 lr_scheduler: CosineAnnealingLR
 

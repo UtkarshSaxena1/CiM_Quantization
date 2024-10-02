@@ -90,7 +90,7 @@ class get_cim_output_signed(Function):
     
     @staticmethod
     def forward(ctx, x, w, conv_stride, conv_padding, conv_dilation, act_bits, act_bit_slice, 
-                        weight_bits, weight_bit_slice, adc_bits, arr,  binary_mask, alpha_cim, weight_scaling_factor, act_scaling_factor):
+                        weight_bits, weight_bit_slice, adc_bits, arr,  binary_mask, alpha_cim, weight_scaling_factor, act_scaling_factor, stochastic, signed_act):
         'Mapping : '
         '1 : positive and negative weights separate '
         '2 : twos complement mapping of weights'
@@ -129,6 +129,12 @@ class get_cim_output_signed(Function):
             Qn_adc = -1
         ctx.Qp_adc = Qp_adc
         ctx.Qn_adc = Qn_adc
+
+        ctx.stochastic = stochastic
+        ctx.signed_act = signed_act
+        # ctx.sigmoid_sharpness = sigmoid_sharpness
+        if stochastic:
+            assert adc_bits == 1.5 # currently only support stochastic quantization with near adcless
         
             
         'making input activations'
@@ -137,7 +143,10 @@ class get_cim_output_signed(Function):
         flatdim = x_unf.shape[-1]
         ctx.flatdim = flatdim
         ctx.arr = arr
-        x_unf_sliced = slicing_act(x_unf,act_bits, act_bit_slice).transpose(0,1).type(intermediate_dtype)
+        if signed_act:
+            x_unf_sliced = slicing_act_signed(x_unf, ctx.act_bits, act_bit_slice).transpose(0,1)
+        else:
+            x_unf_sliced = slicing_act(x_unf,act_bits, act_bit_slice).transpose(0,1).type(intermediate_dtype)
         'shape of x_unf_sliced = [batch_size, num_bit_slices_act, flattened_dim_out ,flat_dim]'
         
         'making weight tensors'
@@ -193,9 +202,27 @@ class get_cim_output_signed(Function):
             adc_out = torch.mul(adc_out, alpha_cim)
         elif adc_bits == 1.5 :
             #Near ADCLess
-            adc_out = (out_unf)/alpha_cim
-            adc_out = torch.round(adc_out).clamp(Qn_adc, Qp_adc)
-            adc_out = torch.mul(adc_out, alpha_cim)
+            if stochastic:
+                sigmoid_sharpness = 0.01
+                ### stochastic sigmoid quantization
+                num_iter = 50
+                sigmoid_1 = torch.sigmoid((out_unf - 0.5 * alpha_cim)/sigmoid_sharpness)
+                sigmoid_2 = torch.sigmoid((out_unf + 0.5 * alpha_cim)/sigmoid_sharpness)
+                
+                stoch_sigmoid_1 = 0
+                stoch_sigmoid_2 = 0
+                for i in range(num_iter):
+                    stoch_sigmoid_1 += torch.ceil(sigmoid_1 - torch.cuda.FloatTensor(out_unf.size()).uniform_())
+                    stoch_sigmoid_2 += torch.ceil(sigmoid_2 - torch.cuda.FloatTensor(out_unf.size()).uniform_())
+                
+                adc_out =  stoch_sigmoid_1/num_iter + stoch_sigmoid_2/num_iter - 1
+                adc_out = torch.round(adc_out).clamp(Qn_adc, Qp_adc)
+                adc_out = torch.mul(adc_out, alpha_cim)
+
+            else:
+                adc_out = (out_unf)/alpha_cim
+                adc_out = torch.round(adc_out).clamp(Qn_adc, Qp_adc)
+                adc_out = torch.mul(adc_out, alpha_cim)
         else:
             #Higher precision ADC does not use scale factor
             adc_out = (out_unf)/(weight_scaling_factor * act_scaling_factor)
@@ -226,7 +253,6 @@ class get_cim_output_signed(Function):
         x_int = ctx.x_int.type(torch.float32)
         
         alpha_cim = ctx.alpha_cim
-        beta_cim = ctx.beta_cim
         adc_bits = ctx.adc_bits
         if adc_bits == 1:
             ps_int = ctx.ps_int.type(torch.float32)
@@ -235,7 +261,7 @@ class get_cim_output_signed(Function):
         elif adc_bits == 1.5:
             ps_int = ctx.ps_int.type(torch.float32)
             ps = ps_int * weight_scaling_factor * act_scaling_factor
-            ps = ps/beta_cim
+            ps = ps/alpha_cim
         else:
             #adc bits = 0 or > 1.5 do not have scale factor
             ps = ctx.ps_int.type(torch.float32)
@@ -262,7 +288,10 @@ class get_cim_output_signed(Function):
         
         #
         x_unf = nn.Unfold(kernel_size = kernel_size,padding = padding, stride = stride)(x_int).transpose(1,2)
-        x_unf_sliced = slicing_act(x_unf, ctx.act_bits, bit_slice_a).transpose(0,1)
+        if ctx.signed_act:
+            x_unf_sliced = slicing_act_signed(x_unf, ctx.act_bits, bit_slice_a).transpose(0,1)
+        else:
+            x_unf_sliced = slicing_act(x_unf, ctx.act_bits, bit_slice_a).transpose(0,1)
         x_unf_sliced = x_unf_sliced * act_scaling_factor
         'shape of x_unf_sliced = [batch_size, num_bit_slices_weight, num_bit_slices_act, flattened_dim_out ,flat_dim]'
 
@@ -283,9 +312,9 @@ class get_cim_output_signed(Function):
         
         grad_temp[torch.logical_or(greater,lesser)] = 0
 
-        'effect of division with alpha and multiplication with beta'
-        if adc_bits == 1.5:
-            grad_temp = (alpha_cim * grad_temp)/beta_cim 
+        # 'effect of division with alpha and multiplication with beta'
+        # if adc_bits == 1.5:
+        #     grad_temp = (alpha_cim * grad_temp)/beta_cim 
         
         
         'gradients for scale parameter alpha'
@@ -354,7 +383,7 @@ class get_cim_output_signed(Function):
         
         
         
-        return grad_input, grad_weight, None, None,  None, None , None, None, None, None, None, None, grad_alpha, None, None
+        return grad_input, grad_weight, None, None,  None, None , None, None, None, None, None, None, grad_alpha, None, None, None, None
 
 
 class Conv2dLSQ(_Conv2dQ):
@@ -451,16 +480,43 @@ def slicing_act(x_int, bits, bit_slice):
     return tensor.float()    
 
 
+def slicing_act_signed(w_int, bits, bit_slice):
+    """
+    w_int: signed int to be sliced
+    bits: number of bits
+    bit_slice : bit width of bit_slice
+    """
+    tensor = w_int.clone()
+    tensor[tensor.le(0)] = 0
+    tensor_positive = tensor
+    
+    tensor = w_int.clone()
+    tensor[tensor.ge(0)] = 0
+    tensor_negative = -1*tensor
+    
+    tensor = torch.stack([tensor_positive, tensor_negative])
+    tensor = tensor.unsqueeze(1).repeat(1,int(bits/bit_slice),1,1,1)
+    for i in range(1,int(bits/bit_slice)):
+        tensor[:,i,:,:] = torch.floor(tensor[:,i,:,:]/(2**bit_slice)**i)
+    
+    tensor = torch.remainder(tensor, 2**bit_slice)
+    tensor = tensor[0] - tensor[1]
+    
+    
+    
+    'tensor_sliced : [num_bit_slice, **kwargs]'
+    ''
+    return tensor.float()
     
 class Conv2dLSQCiM(_Conv2dQCiM):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True, nbits_w=8, nbits_a=8,nbits_alpha=8, wbitslice=1, abitslice=1, xbar=64, adcbits=6, **kwargs):
+                 padding=0, dilation=1, groups=1, bias=True, nbits_w=8, nbits_a=8,nbits_alpha=8, wbitslice=1, abitslice=1, xbar=64, adcbits=6,stochastic_quant=False, **kwargs):
 
         
         super(Conv2dLSQCiM, self).__init__(
             in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
             stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias,
-            nbits_w=nbits_w, nbits_a = nbits_a, nbits_alpha=nbits_alpha, wbitslice=wbitslice, abitslice=abitslice, xbar=xbar, adcbits=adcbits)
+            nbits_w=nbits_w, nbits_a = nbits_a, nbits_alpha=nbits_alpha, wbitslice=wbitslice, abitslice=abitslice, xbar=xbar, adcbits=adcbits, stochastic_quant=stochastic_quant)
         
     
     def forward(self, x):
@@ -519,7 +575,7 @@ class Conv2dLSQCiM(_Conv2dQCiM):
         if self.adcbits != 0:
         
             #Get cim outputs
-            out = get_cim_output_signed.apply(x_q, w_q, self.stride, self.padding, self.dilation, self.nbits_a, self.abitslice, self.nbits_w, self.wbitslice, self.adcbits, self.xbar,  self.binary_mask, alpha_q,  weight_scaling_factor, act_scaling_factor)
+            out = get_cim_output_signed.apply(x_q, w_q, self.stride, self.padding, self.dilation, self.nbits_a, self.abitslice, self.nbits_w, self.wbitslice, self.adcbits, self.xbar,  self.binary_mask, alpha_q,  weight_scaling_factor, act_scaling_factor, self.stochastic_quant, self.signed_act)
             #Reshape to get final layer outputs
             fold_x =int( (x_q.shape[-1] - self.weight.shape[-1] + 2*self.padding[0])/self.stride[0] + 1)
             out = out.transpose(1,2).view(x_q.shape[0],self.out_channels,fold_x,fold_x)
